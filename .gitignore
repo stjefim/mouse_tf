@@ -1,4 +1,4 @@
 data/*
 cp/*
 image*.png
-*/.DS_Store
+.DS_Store
