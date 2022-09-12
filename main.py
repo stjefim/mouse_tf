@@ -13,7 +13,7 @@ plt.rcParams['figure.figsize'] = 8, 8
 print('Loading data')
 filelist = glob.glob('data/*.png')
 train_images = np.array([np.array(Image.open(fname)) for fname in filelist])
-train_images = train_images.reshape(train_images.shape[0], 56, 56, 1).astype('float32')
+train_images = train_images.reshape(train_images.shape[0], 64, 64, 1).astype('float32')
 train_images = (train_images - 127.5) / 127.5
 print('Loading data complete')
 
@@ -28,64 +28,71 @@ train_dataset = tf.data.Dataset.from_tensor_slices(train_images).shuffle(BUFFER_
 
 def make_generator_model():
     model = tf.keras.Sequential()
-    model.add(layers.Dense(7*7*256, use_bias=False, input_shape=(100,)))
+    model.add(layers.Conv2DTranspose(512, (4, 4), strides=(1, 1), padding='valid', use_bias=False, input_shape=[1, 1, 100]))
     model.add(layers.BatchNormalization())
-    model.add(layers.LeakyReLU())
+    model.add(layers.ReLU(0.2))
+    assert model.output_shape == (None, 4, 4, 512) 
 
-    model.add(layers.Reshape((7, 7, 256)))
-    assert model.output_shape == (None, 7, 7, 256)  # Note: None is the batch size
-
-    model.add(layers.Conv2DTranspose(128, (5, 5), strides=(1, 1), padding='same', use_bias=False))
-    assert model.output_shape == (None, 7, 7, 128)
+    model.add(layers.Conv2DTranspose(256, (4, 4), strides=(2, 2), padding='same', use_bias=False))
     model.add(layers.BatchNormalization())
-    model.add(layers.LeakyReLU())
+    model.add(layers.ReLU(0.2))
+    assert model.output_shape == (None, 8, 8, 256) 
 
-    model.add(layers.Conv2DTranspose(64, (5, 5), strides=(2, 2), padding='same', use_bias=False))
-    assert model.output_shape == (None, 14, 14, 64)
+
+    model.add(layers.Conv2DTranspose(128, (4, 4), strides=(2, 2), padding='same', use_bias=False))
     model.add(layers.BatchNormalization())
-    model.add(layers.LeakyReLU())
+    model.add(layers.ReLU(0.2))
+    assert model.output_shape == (None, 16, 16, 128) 
 
-    model.add(layers.Conv2DTranspose(32, (5, 5), strides=(2, 2), padding='same', use_bias=False))
-    assert model.output_shape == (None, 28, 28, 32)
+    model.add(layers.Conv2DTranspose(64, (4, 4), strides=(2, 2), padding='same', use_bias=False))
     model.add(layers.BatchNormalization())
-    model.add(layers.LeakyReLU())
+    model.add(layers.ReLU(0.2))
+    assert model.output_shape == (None, 32, 32, 64) 
 
-    model.add(layers.Conv2DTranspose(1, (5, 5), strides=(2, 2), padding='same', use_bias=False, activation='tanh'))
-
+    model.add(layers.Conv2DTranspose(1, (4, 4), strides=(2, 2), padding='same', use_bias=False, activation='tanh'))
+    
+    assert model.output_shape == (None, 64, 64, 1) 
     return model
 
 
 generator = make_generator_model()
 
-noise = tf.random.normal([1, 100])
-generated_image = generator(noise, training=False)
+# noise = tf.random.normal([1, 1, 1, 100])
+# generated_image = generator(noise, training=False)
 
 # plt.imshow(generated_image[0, :, :, 0], cmap='gray')
 
 def make_discriminator_model():
     model = tf.keras.Sequential()
-    model.add(layers.Conv2D(64, (5, 5), strides=(2, 2), padding='same',
-                                     input_shape=[56, 56, 1]))
-    model.add(layers.LeakyReLU())
-    model.add(layers.Dropout(0.2))
+    model.add(layers.Conv2D(64, (4, 4), strides=(2, 2), padding='same',
+                                     input_shape=[64, 64, 1]))
+    model.add(layers.LeakyReLU(0.2))
+    assert model.output_shape == (None, 32, 32, 64)
 
-    model.add(layers.Conv2D(128, (5, 5), strides=(2, 2), padding='same'))
-    model.add(layers.LeakyReLU())
-    model.add(layers.Dropout(0.2))
+    model.add(layers.Conv2D(128, (4, 4), strides=(2, 2), padding='same'))
+    model.add(layers.BatchNormalization())
+    model.add(layers.LeakyReLU(0.2))
+    assert model.output_shape == (None, 16, 16, 128)
 
     model.add(layers.Conv2D(256, (4, 4), strides=(2, 2), padding='same'))
-    model.add(layers.LeakyReLU())
-    model.add(layers.Dropout(0.2))
+    model.add(layers.BatchNormalization())
+    model.add(layers.LeakyReLU(0.2))
+    assert model.output_shape == (None, 8, 8, 256)
 
-    model.add(layers.Flatten())
-    model.add(layers.Dense(1))
+    model.add(layers.Conv2D(512, (4, 4), strides=(2, 2), padding='same'))
+    model.add(layers.BatchNormalization())
+    model.add(layers.LeakyReLU(0.2))
+    assert model.output_shape == (None, 4, 4, 512)
 
+    model.add(layers.Conv2D(1, (4, 4), strides=(1, 1), padding='valid', activation='sigmoid'))
+
+    assert model.output_shape == (None, 1, 1, 1)
     return model
 
 
 discriminator = make_discriminator_model()
-decision = discriminator(generated_image)
-print(decision)
+# decision = discriminator(generated_image)
+# print(decision)
 
 cross_entropy = tf.keras.losses.BinaryCrossentropy(from_logits=True)
 
@@ -113,14 +120,15 @@ EPOCHS = 50
 noise_dim = 100
 num_examples_to_generate = 16
 
-seed = tf.random.normal([num_examples_to_generate, noise_dim])
+seed = tf.random.normal([num_examples_to_generate, 1, 1, noise_dim])
 
 @tf.function
 def train_step(images):
-    noise = tf.random.normal([BATCH_SIZE, noise_dim])
+    noise = tf.random.normal([BATCH_SIZE, 1, 1, noise_dim])
 
     with tf.GradientTape() as disc_tape:
       generated_images = generator(noise, training=True)
+      print(generated_images.shape)
 
       real_output = discriminator(images, training=True)
       fake_output = discriminator(generated_images, training=True)
